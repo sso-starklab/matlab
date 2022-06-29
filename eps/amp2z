@@ -1,0 +1,12 @@
+
+[m1,I1] = max(sst.max);
+[m2,I2] = min(sst.max);
+
+amp2z = zeros(length(m2),1)';
+for i = 1:length(m1)
+    if m1(i)>abs(m2(i))
+        amp2z(i) = m1(i);
+    else
+        amp2z(i) = m2(i);
+    end
+end

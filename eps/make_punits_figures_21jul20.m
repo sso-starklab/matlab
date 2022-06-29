@@ -1,0 +1,1895 @@
+% make_punits_figures           make figures for positive units paper
+
+% 17-may-20 SSo + ES
+
+% revisions
+% 31-may-20 (1) completed check_mono derivation of connectivity maps
+%           (2) updated figure 3, part 8
+% 01-june-20(1) updated datadir and outdir for ispc
+% 02-jun-20 (2) added extraction of ASG-e and ASG-i from s2s
+%           (3) added plotting of ASG
+%           (4) added significance testing for ASG, nPRE, nPOST
+% 04-jun-20 (1) added initial place analyses (Fig. 5)
+%           (2) added ubiquity measures (Fig. 2)
+% 07-jun-20 (1) added ACH_COM, baseline rate, and fanofactor analyses (Fig. 4)
+%           (2) externalized make_punits_figures_one_hist
+% 10-jun-20 (1) added depth analyses and plots
+%           (2) updated datadir and outdir for isunix
+%           (3) added pie chart plot (Fig. 2)
+%           (4) added Lratio and ISI-index plots (Fig. 4) - change xlim?
+% 18-jun-20 (1) added optical responses analysis (preliminary)
+% 21-jun-20 (1) finished data accumulation for optical responses
+% 24-jun-20 (1) extended data accumulation for optical responses to datadir
+%           (2) updated datadir for example in figure 3 for isunix
+% 25-jun-20 (1) fixed column names for bar graphs in figure 3
+%           (2) added lab convention colors 
+%           (3) added figure 8 - punit sub-clusters
+% 28-jun-20 (1) added tsne for figure 8
+%           (2) added multiple 2D projections to figure 8 (all units, punits)
+%           (3) added ubiquity by spikes and by regions
+%           (4) added mA234 and mP20 session regions
+% 07-jul-20 (1) added regions to all sessions: nCx,CA1,hpx,WM,other (removed reg_CA1_DG, reg_mixed), and updated cases in fig2 (4)
+% 12-jul-20 (1) organized figure 7 (optical responses) according to
+%               multiple opsin types/targeted cells, and cell types (manipulated cells)
+% 13-jul-20 (1) moved to sub-cluster on the local version (not on cluster solution loaded), and changed clunames, 
+%               colors and tsne parameters to support over 3 clusters
+
+% to do:
+% figure 8 - make scatter diagrams of all other pairs 
+
+%
+% next:
+% update figure 3, part 8, with ASG and STC statistics
+
+% figure 1: 
+% figure 2: ubiquity
+% figure 3: connectivity - includes loading of data (check_mono)
+% figure 4: firing rate statistics (fano factor, ACH_com, Lratio, ISI-index)
+% figure 5: place analyses
+% figure 6: depth analyses
+% figure 7: optical responses
+% figure 8: subclusters
+
+function make_punits_figures( fignums, savef, savetype, outdir )
+
+% general constants
+Nfigs                   = 10;
+% colors_PI               = [ 0 0 0.7; 1 0 0 ]; % INT, PYR
+% colors_NP               = [ 0 0.7 0; 1 0 1 ]; % Nunit, Punit
+
+colors_PI               = [ 46 125 50; 106 27 154 ] / 255; % INT, PYR
+colors_NP               = [ 21 101 192; 173 20 87 ] / 255; % Nunit, Punit
+colors_PI_light         = [ 96 173 94; 156 77 204 ] / 255; % INT, PYR
+colors_NP_light         = [ 94 146 243; 227 81 131 ] / 255; % Nunit, Punit
+
+
+% argument handling
+nargs = nargin;
+if nargs < 1 || isempty( fignums )
+    fignums = 0;
+end
+if ~isempty( setdiff( fignums, [ 0 1 ] ) ) || length( fignums ) < Nfigs
+    idx = round( fignums );
+    fignums = zeros( Nfigs, 1 );
+    fignums( idx ) = 1;
+end
+
+if nargs < 2 || isempty( savef )
+    savef = 1;
+end
+if nargs < 3 || isempty( savetype )
+    savetype = 'pdf';
+end
+if nargs < 4 || isempty( outdir )
+    outdir = '';
+end
+
+% get some inline functions
+[ bino_ci_exact, bino_ci_norm, bino_se_norm ] = binomial_inlines;
+
+% set plotting parameters:
+if isempty( outdir ) || ~exist( outdir, 'dir' )
+    if ismac        % eran (hoor)
+        outdir          = '/Users/eranstark/Documents/graphics/punits/data_figures';
+        datadir         = '/Users/eranstark/Documents/da/punits/';
+        % assumes that data are synchronized with odin, if not, write:
+        % rsync -avh --progress /Volumes/odin/Shirly/eps/fanofactor/* ~/Documents/da/punits/fanofactor/
+        % rsync -avh --progress /Volumes/odin/Shirly/eps/sps/* ~/Documents/da/punits/sps/ 
+        % rsync -avh --progress /Volumes/odin/Shirly/eps/sst/* ~/Documents/da/punits/sst/
+        % rsync -avh --progress /Volumes/odin/Shirly/eps/s2s/*  ~/Documents/da/punits/s2s/ 
+        datadir_hadas       = '/Users/eranstark/Documents/da/hifi/';
+        fname_hadas         = 'all_animals_data_21May20';
+    elseif isunix   % shirly (nanna) Linux
+        outdir              = '/media/shirly/Data/_Shirly/Lab/eps/data_figures';
+        datadir             = '/media/shirly/C22865A128659567/mice/EPS/';
+    elseif ispc     % shirly (nanna) Windows
+        outdir              = 'D:\_Shirly\Lab\eps\data_figures';
+        datadir             = 'G:\mice\EPS\';
+    end
+end
+
+% get the database
+[ res, sst, ff ]            = shirly_eps_analysis( [], 'onlygather', 1, 'ff_suffix', '_fanofactors_SWS' );
+
+% ----------------------------------------------------------------------
+% Figure 1
+% 
+% ----------------------------------------------------------------------
+
+if fignums( 1 )
+    
+    % process the data
+    
+    % plot the figures
+    fig1( 1 ) = figure;
+    
+    fig1( 2 ) = figure;
+
+    %-----
+    % save the figures
+    fig = fig1;
+    if savef
+        for i = 1 : length( fig )
+            if fig( i ) == 0 || isempty( fig( i ) )
+                continue
+            end
+            figname = sprintf( '%s/punits_FIG1_part%d', outdir, i );
+            fig_out( fig( i ), 1, figname, savetype ),
+        end
+    end
+    
+    
+end
+
+% ----------------------------------------------------------------------
+% Figure 2
+% Ubiquity
+% ----------------------------------------------------------------------
+
+if fignums( 2 )
+    
+    % cell array of sessions from nCX
+    reg_nCX      = { 'mA234_01','mA234_03','mA234_07','mA234_08','mA234_09', 'mA234_12', 'mA234_13',...
+                     'mA234_14', 'mA234_15', 'mA234_16', 'mB142_06', 'mC41_10', 'mC41_11', 'mC41_12',...
+                     'mC41_13', 'mDL5_05', 'mDL5_06', 'mDL5_07', 'mDS1_07', 'mDS1_08', 'mDS1_09',...
+                     'mF105_10', 'mF108_01','mF108_02',...
+                     'mF79_26', 'mF84_01', 'mF84_02', 'mF84_03', 'mF84_04', 'mF84_05', 'mF84_06',...
+                     'mF84_08', 'mF84_09', 'mF93_02', 'mF93_04', 'mP23_03', 'mP23_04', 'mP20_03',...
+                     'mP20_04', 'mP20_05' 'mS234_01', 'mS234_02', 'mV99_03', 'mP20_01', };
+    % cell array of sessions from WM
+    reg_WM       = { 'mP23_05', 'mP23_06', 'mC41_19'};
+    % cell array of sessions from CA1
+    reg_CA1      = { 'mA234_17', 'mA234_18', 'mA234_20', 'mA234_21', 'mA234_22',...
+                     'mA234_23', 'mA234_24','mA234_25', 'mA234_27', 'mA234_28', 'mA234_29', 'mA234_30',...
+                     'mA234_31', 'mA234_32', 'mA234_33', 'mA234_35','mA234_37', 'mA234_38', 'mA234_39',...
+                     'mA234_40', 'mA234_41','mC41_20', 'mC41_21', 'mC41_23', 'mC41_24', 'mC41_25',...
+                     'mC41_26', 'mC41_31', 'mC41_32', 'mC41_33', 'mC41_34', 'mC41_36', ...
+                     'mC41_38', 'mC41_39', 'mC41_40', 'mC41_41', 'mC41_43', 'mC41_44', 'mC41_45', 'mC41_48', ...
+                     'mC41_52','mC41_53', 'mC41_55', 'mC41_57', 'mC41_60', 'mDS1_11', 'mDS1_12',...
+                     'mDS1_13', 'mDS1_14', 'mDS1_15', 'mP101_06', 'mP101_07', 'mP101_10',...
+                     'mP101_12', 'mP101_13', 'mP101_14', 'mP23_12', 'mP23_13', 'mP23_14', 'mP23_15',...
+                     'mP23_16', 'mP23_18', 'mP23_20', 'mP23_22', 'mP23_26', 'mP23_27', 'mP23_29', 'mP23_32',...
+                     'mP23_33', 'mP23_34', 'mP23_35', 'mP23_36', 'mP23_37', 'mP23_38', 'mP23_39', 'mP23_41',...
+                     'mP23_42', 'mS234_19', 'mS234_20', 'mV99_07', 'mV99_09', 'mV99_10','mV99_11','mV99_12',...
+                     'mV99_13', 'mV99_14', 'mV99_15', 'mV99_16', 'mV99_17', 'mV99_18', 'mV99_19','mK01_10',...
+                     'mK01_13', 'mK01_14', 'mK01_16' };
+    % cell array of sessions from HIP
+    reg_HPC       = {'mB142_09', 'mC41_19', 'mC41_20'};
+    % cell array of sessions from unrecognized areas (mP20, mDL5)
+    reg_OTHER     = {'mDL5_08','mDL5_09','mDL5_10','mDL5_11','mDL5_12','mDL5_13','mDL5_14','mDL5_15',...
+                     'mDL5_16', 'mDL5_17', 'mDL5_18', 'mDL5_24', 'mDL5_25', 'mDL5_26', 'mDL5_27', 'mDL5_28',...
+                     'mDL5_29', 'mDL5_31', 'mDL5_32', 'mDL5_33', 'mDL5_34', 'mDL5_36', 'mDS1_10','mP20_07',...
+                     'mP20_08', 'mP20_09', 'mP20_10', 'mP20_13', 'mP20_14', 'mP20_15', 'mP20_16', 'mP20_17',...
+                     'mP20_18', 'mP20_19', 'mP20_21', 'mP20_22', 'mP20_26', 'mP20_27', 'mP20_28', 'mP20_29'};
+    
+    % cell array of mouse lines
+    lines_VIP         = {'mV99'};
+    lines_CamK        = {'mF84', 'mF79', 'mF93', 'mF108'};
+    lines_PV          = {'mP23', 'mP101', 'mDL5'};
+    lines_FVB_CamK    = {'mC41', 'mA234', 'mS234'};
+    lines_CCK         = {'mK01'};
+    lines_FVB_c57B    = {'mF105'};
+    lines_FVB_PV      = {'mB142'};
+
+
+    % plot the figures
+    
+    % histograms of signed amplitudes:
+    fig2( 1 ) = figure;
+    
+    % copied from shirly_eps_analysis:
+    ispos           = sst.extremum > 0;
+    %nunits          = size( ispos, 1 );
+    %nbins           = ceil( nunits / 5 );
+
+    nbins           = 60;
+    
+    byprob          = 0;
+    [ myus, sds, pval, bins_x, hx0, hx1 ] = make_punits_figures_one_hist( sst.maxp2p .* ( 2 * ispos - 1 ) * 1000, ispos, nbins, colors_NP, 'Signed Amp [\muV]', byprob );
+
+    %----------------------------------------------------------------
+    % pie charts
+    fig2( 2 )                   = figure;
+    slice_names                 = {'Nunits', 'Punits'};
+
+    for spi                     = 1 : 2
+        subplot( 1, 2, spi )
+        switch spi
+            case 1
+                % pie chart for the fraction of the punits out of the total units
+                sums            = [ sum( ~ispos ) sum( ispos ) ];
+            case 2
+                % pie chart for the fraction of the punits out of the total units
+                sums            = [ sum( sst.nspks( ~ispos ) ) sum( sst.nspks( ispos ) ) ];
+        end
+        ph                      = pie( sums, slice_names );
+        for i                   = 1 : 2
+            set( ph( 2 * i - 1 ), 'FaceColor', colors_NP( i, : ), 'EdgeColor', colors_NP( i, : ) )
+            set( ph( 2 * i ), 'String', sprintf( '%s (%d)', slice_names{ i }, sums( i ) ) )
+        end
+        title( sprintf( '%0.2g%%', round( sums( 2 ) / sum( sums ) * 1000 ) / 10 ) )
+    end
+    
+    %----------------------------------------------------------------
+    % histograms/scatter of number of punits/nunits per session
+    usess           = unique( sst.filebase );
+    nsess           = length( usess );
+    nums            = NaN( nsess, 2 );
+    for i           = 1 : nsess
+        asess       = usess{ i };
+        idx         = ismember( sst.filebase, asess );
+        nums( i, : ) = [ sum( idx & ~ispos ) sum( idx & ispos ) ];
+    end
+    frcts           = nums ./ [ sum( nums, 2 ) * ones( 1, 2 ) ];
+
+    
+    fig2( 3 )       = figure;
+    
+    subplot( 2, 2, 1 )
+    bh              = bar( 1 : nsess, sort( nums( :, 2 ) ), 1 );
+    set( bh, 'FaceColor', colors_NP( 2, : ), 'EdgeColor', colors_NP( 2, : ) )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    ylabel( 'Number of Punits' )
+    xlabel( 'Session' )
+    mean_nums       = mean(nums( :, 2 ) );
+    alines( mean_nums, 'y', 'color', [ 0 0 0 ], 'linestyle', '--' );
+    axis square
+    
+    subplot( 2, 2, 2 )
+    bh              = bar( 1 : nsess, sort( frcts( :, 2 ) ), 1 );
+    set( bh, 'FaceColor', colors_NP( 2, : ), 'EdgeColor', colors_NP( 2, : ) )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    ylabel( 'Fraction of Punits' )
+    xlabel( 'Session' )
+    mean_frcts      = mean(frcts( :, 2 ) );
+    alines( mean_frcts, 'y', 'color', [ 0 0 0 ], 'linestyle', '--' );
+    axis square
+    
+    subplot( 2, 2, 3 )
+    jit             = ( rand( nsess, 2 ) - 0.5 ) / 2;
+    nums_jit        = nums + jit;
+    nums_jit( nums == 0 ) = 0;
+    scatter ( nums_jit( :, 1 ), nums_jit( :, 2 ), 15,'MarkerFaceColor','b')
+    alpha(.5);
+    [ cc, pp ] = calc_spearman( nums( :, 1 ), nums( :, 2 ), 1000 );
+    title( sprintf( 'Number of units/session (CC=%0.2g, pval=%0.3g)', cc, pp ) )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    xlabel( 'Nunits' )
+    ylabel( 'Punits' )
+    
+    subplot( 2, 2, 4 )
+    sums = [ sum( nums( :, 1 ) > 0 & nums( :, 2 ) == 0 )
+        sum( nums( :, 1 ) == 0 & nums( :, 2 ) > 0 )
+        sum( nums( :, 1 ) > 0 & nums( :, 2 ) > 0 ) ];
+    slice_names = { 'Only Nunits', 'Only Punits', 'Both' };
+    ph = pie( sums, slice_names );
+    try
+        set( ph( 1 ), 'EdgeColor', colors_NP( 1, : ), 'FaceColor', colors_NP( 1, : ) )
+        set( ph( 3 ), 'EdgeColor', [ 0 0 0 ], 'FaceColor', [ 0 0 0 ] )
+        set( ph( 5 ), 'EdgeColor', colors_NP( 2, : ), 'FaceColor', colors_NP( 2, : ) )
+    catch
+        fprintf( 'Failed in something\n' )
+    end
+    
+    %----------------------------------------------------------------
+    % summary for regions and lines
+    fig2( 4 )           = figure;
+    nregs               = 3;
+    
+    means               = NaN( nregs, 2 );
+    sems                = NaN( nregs, 2 );
+    counts              = NaN( nregs, 1 );
+    
+    reg_names           = { 'nCX', 'CA1', 'Other' };
+    
+    for spi             = 1 : nregs
+        
+        switch spi
+            case 1
+                list1   = reg_nCX;
+            case 2
+                list1   = reg_CA1;
+            case 3
+                list1   = [ reg_HPC reg_OTHER reg_WM];
+        end
+        name1           = reg_names{ spi };
+        
+        idx1            = ismember( sst.filebase, list1 );
+        sst1            = struct_select( sst, idx1 );
+        ispos1          = ispos( idx1 );
+        
+        usess           = unique( sst1.filebase );
+        nsess           = length( usess );
+        nums1           = NaN( nsess, 2 );
+        for i           = 1 : nsess
+            asess       = usess{ i };
+            idx         = ismember( sst1.filebase, asess );
+            nums1( i, : ) = [ sum( idx & ~ispos1 ) sum( idx & ispos1 ) ];
+        end
+        frcts1          = nums1 ./ ( sum( nums1, 2 ) * ones( 1, 2 ) );
+        
+%         means( spi, : ) = mean( nums1, 1 );
+%         sems( spi, : )  = calc_sem( nums1, 1 );
+%         counts( spi, : ) = size( nums1, 1 );
+        means( spi, : ) = mean( frcts1, 1 );
+        sems( spi, : )  = calc_sem( frcts1, 1 );
+        counts( spi, : ) = size( frcts1, 1 );
+        
+        % plot
+        subplot( 2, 2, spi )
+        
+        bh              = bar( 1 : nsess, sort( frcts1( :, 2 ) ), 1 );
+        set( bh, 'FaceColor', colors_NP( 2, : ), 'EdgeColor', colors_NP( 2, : ) )
+        set( gca, 'tickdir', 'out', 'box', 'off' )
+        ylabel( 'Fraction of Punits' )
+        xlabel( 'Session' )
+        mean_frcts      = mean( frcts1( :, 2 ) );
+        alines( mean_frcts, 'y', 'color', [ 0 0 0 ], 'linestyle', '--' );
+        title( name1 )
+        axis square
+        
+    end
+    
+    subplot( 2, 2, spi + 1 )
+    %bar( 1 : nregs, means( :, 2 ) )
+    [ bh, eh ] = barwerror( 1 : nregs, means( :, 2 ), sems( :, 2 ) ...
+        , colors_NP( 2, : ), 0.8, [ 0 0 0 ], 2 );
+    set( gca, 'XTickLabel', reg_names );
+    ylabel( 'Fraction of Punits' )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    axis square
+    
+    %-----
+    % save the figures
+    fig = fig2;
+    if savef
+        for i = 1 : length( fig )
+            if fig( i ) == 0 || isempty( fig( i ) )
+                continue
+            end
+            figname = sprintf( '%s/punits_FIG2_part%d', outdir, i );
+            fig_out( fig( i ), 1, figname, savetype ),
+        end
+    end
+    
+    
+end
+
+% ----------------------------------------------------------------------
+% Figure 3
+% Connectivity
+% ----------------------------------------------------------------------
+
+if fignums( 3 )
+    
+    % process the data
+%     filebase        = filebaseLookup( 'mDL5', -16 );
+%     mono            = check_mono( filebase );
+%     
+%     ilevel          = 'B';
+%     L0              = load( [ filebase '.sst' ], '-mat' );
+%     L1              = load( [ filebase '.s2s' ], '-mat' );
+%     gidx            = check_cluster_quality( L0.sst, ilevel );    
+%     mono1           = check_mono( L1.s2s, gidx );
+    
+    % go over global sst stucture and run check_mono for each session
+    usess           = unique( sst.filebase );
+    nsess           = length( usess );
+    asg1all         = [];
+    asg2all         = [];
+    for i = 1 : nsess
+        % the indices in the global sst
+        asess       = usess{ i };
+        uidx        = ismember( sst.filebase, asess );
+        % initialize an output structure for the session
+        ssti            = struct_select( sst, uidx );
+        nunits          = size( ssti.filebase, 1 );
+        si.filebase     = repmat( ssti.filebase( 1 ), [ nunits 1 ] );
+        si.shankclu     = NaN( nunits, 2 );
+        lv              = false( nunits, 1 );
+        nv              = zeros( nunits, 1 );
+        si.exc          = lv;               % boolean flag - is an excitatory unit
+        si.inh          = lv;               % boolean flag - is an inhibitory unit
+        si.nexcPost     = nv;               % number of excited post-synaptic peers
+        si.ninhPost     = nv;               % number of inhibited post-synaptic peers
+        si.nexcPre      = nv;               % number of exciting pre-synaptic peers 
+        si.ninhPre      = nv;               % number of inhibiting pre-synaptic peers 
+        si.asg1         = nv;               % mean ASG to excited post-synaptic peers
+        si.asg2         = nv;               % mean ASG to inhibited post-synaptic peers
+
+        % load the sst and s2s for the relevant session
+        monoOK          = 1;
+        try
+            L0          = load( [ datadir 'sst/' ssti.filebase{ 1 } '.sst' ], '-mat' );
+            L1          = load( [ datadir 's2s/' ssti.filebase{ 1 } '.s2s' ], '-mat' );
+        catch
+            fprintf( 1, '%d: Missing data (either sst, s2s, or both) for %s\n', i, usess{ i } )
+            monoOK      = 0;
+        end
+        if ~isequal( L1.s2s.shankclu, L0.sst.shankclu )
+            fprintf( 1, '%d: Data mismatch for %s\n', i, usess{ i } )
+            monoOK      = 0;
+        end
+        if monoOK
+            % call check_mono locally with the indices of only the relevant units
+            gidx        = ismember( L0.sst.shankclu, ssti.shankclu, 'rows' );
+            mono        = check_mono( L1.s2s, gidx );
+            % populate the structure with the relevant details
+            si.exc( mono.exc ) = 1;
+            si.inh( mono.inh ) = 1;
+            % loop over all units, and counts number of peers for each
+            for j = 1 : nunits
+                si.nexcPost( j ) = sum( mono.pairsExc( :, 1 ) == j );
+                si.ninhPost( j ) = sum( mono.pairsInh( :, 1 ) == j );
+                si.nexcPre( j ) = sum( mono.pairsExc( :, 2 ) == j );
+                si.ninhPre( j ) = sum( mono.pairsInh( :, 2 ) == j );
+                asg1            = mono.pairsExc( mono.pairsExc( :, 1 ) == j, 5 );
+                asg2            = mono.pairsInh( mono.pairsInh( :, 1 ) == j, 5 );
+                si.asg1( j )    = nangeomean( asg1 );
+                si.asg2( j )    = -nangeomean( -asg2 );
+                asg1all         = [ asg1all; asg1 ];
+                asg2all         = [ asg2all; asg2 ];
+            end
+            
+        end
+        % accumulate over sessions
+        if i == 1
+            s       = si;
+        else
+            s       = struct_cat( s, si );
+        end
+            
+    end
+    
+    
+    % check if equal
+    if ~isequal( s.filebase, sst.filebase  )
+        error( 'fix all issues first' )
+    end
+    for i = 1 : size( s.filebase, 1 )
+        eq( i ) = isequal( s.filebase( i ), sst.filebase( i ) ); 
+    end
+    neq = find( ~eq );
+    % fix mK01_10 - mK1_10; mS###; mP23_06; mDL5_28; mP23_04_3
+    
+    
+    % 31-may-20: note problem in check sum:
+    % sum( [ double( s.exc ) - double( s.nexcPost > 0 ) ] )
+    
+    % plot the figures
+    pidx        = sst.extremum > 0;
+    eidx        = s.exc == 1;                   % excitatory
+    iidx        = s.inh == 1;                   % inhibitory
+    eidx2       = s.nexcPre ~= 0;               % is post-synaptic to an excitatory (excited)
+    iidx2       = s.ninhPre ~= 0;               % inhibited
+    cidx        = eidx | iidx | eidx2 | iidx2;  % connected to the simultaneously recorded units
+    
+    % numbers/fractions of E-cells (punits/nunits)
+    emat        = NaN( 4, 2 );
+    emat( 1 : 2, 1 ) = [ sum( pidx & eidx ), sum( pidx ) ]';
+    emat( 1 : 2, 2 ) = [ sum( ~pidx & eidx ), sum( ~pidx ) ]';
+    emat( 3, : ) = emat( 1, : ) ./ emat( 2, : );
+    emat( 4, : ) = bino_se_norm( emat( 1, : ), emat( 2, : ) )';
+    % numbers/fractions of I-cells (punits/nunits)
+    imat        = NaN( 4, 2 );
+    imat( 1 : 2, 1 ) = [ sum( pidx & iidx ), sum( pidx ) ]';
+    imat( 1 : 2, 2 ) = [ sum( ~pidx & iidx ), sum( ~pidx ) ]';
+    imat( 3, : ) = imat( 1, : ) ./ imat( 2, : );
+    imat( 4, : ) = bino_se_norm( imat( 1, : ), imat( 2, : ) )';
+    % number/fractions of null-cells (punits/nunits)
+    nmat        = NaN( 4, 2 );
+    nmat( 1 : 2, 1 ) = [ sum( pidx & ~eidx & ~iidx ), sum( pidx ) ]';
+    nmat( 1 : 2, 2 ) = [ sum( ~pidx & ~eidx & ~iidx ), sum( ~pidx ) ]';
+    nmat( 3, : ) = nmat( 1, : ) ./ nmat( 2, : );
+    nmat( 4, : ) = bino_se_norm( nmat( 1, : ), nmat( 2, : ) )';
+
+    % number/fractions of connected-cells (punits/nunits)
+    cmat        = NaN( 4, 2 );
+    cmat( 1 : 2, 1 ) = [ sum( pidx & cidx ), sum( pidx ) ]';
+    cmat( 1 : 2, 2 ) = [ sum( ~pidx & cidx ), sum( ~pidx ) ]';
+    cmat( 3, : ) = cmat( 1, : ) ./ cmat( 2, : );
+    cmat( 4, : ) = bino_se_norm( cmat( 1, : ), cmat( 2, : ) )';
+    
+    % numbers/fractions of excited units (punits/nunits)
+    emat2       = NaN( 4, 2 );
+    emat2( 1 : 2, 1 ) = [ sum( pidx & eidx2 ), sum( pidx ) ]';
+    emat2( 1 : 2, 2 ) = [ sum( ~pidx & eidx2 ), sum( ~pidx ) ]';
+    emat2( 3, : ) = emat2( 1, : ) ./ emat2( 2, : );
+    emat2( 4, : ) = bino_se_norm( emat2( 1, : ), emat2( 2, : ) )';
+    
+    % numbers/fractions of inhibited units (punits/nunits)
+    imat2       = NaN( 4, 2 );
+    imat2( 1 : 2, 1 ) = [ sum( pidx & iidx2 ), sum( pidx ) ]';
+    imat2( 1 : 2, 2 ) = [ sum( ~pidx & iidx2 ), sum( ~pidx ) ]';
+    imat2( 3, : ) = imat2( 1, : ) ./ imat2( 2, : );
+    imat2( 4, : ) = bino_se_norm( imat2( 1, : ), imat2( 2, : ) )';
+    
+    % number of connected units (excitatory/inhibitory/excited/inhibited)
+    
+    % number of post-synaptic peers
+    npost           = NaN( 3, 4 );
+    npost( :, 1 )   = [ mean( s.nexcPost( eidx & ~pidx ) ) calc_sem( s.nexcPost( eidx & ~pidx ) ) sum( eidx & ~pidx ) ]';
+    npost( :, 2 )   = [ mean( s.nexcPost( eidx & pidx ) ) calc_sem( s.nexcPost( eidx & pidx ) ) sum( eidx & pidx ) ]';
+    npost( :, 3 )   = [ mean( s.ninhPost( iidx & ~pidx ) ) calc_sem( s.ninhPost( iidx & ~pidx ) ) sum( iidx & ~pidx ) ]';
+    npost( :, 4 )   = [ mean( s.ninhPost( iidx & pidx ) ) calc_sem( s.ninhPost( iidx & pidx ) ) sum( iidx & pidx ) ]';
+    % E-nunits, E-punits, I-nunits, I-punits
+    pval_NPOST      = [ utest( s.nexcPost( eidx & ~pidx ), s.nexcPost( eidx & pidx ) )
+        utest( s.ninhPost( iidx & ~pidx ), s.ninhPost( iidx & pidx ) ) ];
+    
+    % number of pre-synaptic peers
+    npre            = NaN( 3, 4 );
+    npre( :, 1 )    = [ mean( s.nexcPre( eidx2 & ~pidx ) ) calc_sem( s.nexcPost( eidx2 & ~pidx ) ) sum( eidx2 & ~pidx ) ]';
+    npre( :, 2 )    = [ mean( s.nexcPre( eidx2 & pidx ) ) calc_sem( s.nexcPost( eidx2 & pidx ) ) sum( eidx2 & pidx ) ]';
+    npre( :, 3 )    = [ mean( s.ninhPre( iidx2 & ~pidx ) ) calc_sem( s.ninhPre( iidx2 & ~pidx ) ) sum( iidx2 & ~pidx ) ]';
+    npre( :, 4 )    = [ mean( s.ninhPre( iidx2 & pidx ) ) calc_sem( s.ninhPre( iidx2 & pidx ) ) sum( iidx2 & pidx ) ]';
+    % nunits-E, punits-E, nunits-I, punits-I
+    H_JB = [ jbtest( s.nexcPre( eidx2 & ~pidx ) ), jbtest( s.nexcPre( eidx2 & pidx ) ) ...
+        jbtest( s.ninhPre( iidx2 & ~pidx ) ), jbtest( s.ninhPre( iidx2 & pidx ) ) ];
+    if all( H_JB == 0 )
+        [ ~, pp1 ]  = ttest2( s.nexcPre( eidx2 & ~pidx ) , s.nexcPre( eidx2 & pidx ) );
+        [ ~, pp2 ]  = ttest2( s.ninhPre( iidx2 & ~pidx ), s.ninhPre( iidx2 & pidx ) );
+    else
+        pp1         = utest( s.nexcPre( eidx2 & ~pidx ), s.nexcPre( eidx2 & pidx ) );
+        pp2         = utest( s.ninhPre( iidx2 & ~pidx ), s.ninhPre( iidx2 & pidx ) );
+    end
+    pval_NPRE   = [ pp1 pp2 ];
+            
+    % ASG
+    asg             = NaN( 3, 4 );
+    asg( :, 1 )    = [ nangeomean( s.asg1( eidx & ~pidx ) ) calc_sem( s.asg1( eidx & ~pidx ) ) sum( eidx & ~pidx ) ]';
+    asg( :, 2 )    = [ nangeomean( s.asg1( eidx & pidx ) ) calc_sem( s.asg1( eidx & pidx ) ) sum( eidx & pidx ) ]';
+    asg( :, 3 )    = [ -nangeomean( -s.asg2( iidx & ~pidx ) ) calc_sem( s.asg2( iidx & ~pidx ) ) sum( iidx & ~pidx ) ]';
+    asg( :, 4 )    = [ -nangeomean( -s.asg2( iidx & pidx ) ) calc_sem( s.asg2( iidx & pidx ) ) sum( iidx & pidx ) ]';
+    % E-nunits, E-punits, I-nunits, I-punits
+    pval_ASG        = [ utest( s.asg1( eidx & ~pidx ), s.asg1( eidx & pidx ) )
+        utest( s.asg2( iidx & ~pidx ), s.asg2( iidx & pidx ) ) ];
+
+    fig3( 8 ) = figure;
+    subplot( 3, 3, 1 )
+    [ bh, eh ] = barwerror( 1 : 4, [ emat( 3, [ 2 1 ] ) imat( 3, [ 2 1 ] ) ], [ emat( 4, [ 2 1 ] ) imat( 4, [ 2 1 ] )] ...
+        , colors_NP( 1, : ), 0.8, [ 0 0 0 ], 2 );
+    colnames = { 'E-nunits', 'E-punits', 'I-nunits', 'I-punits' };
+    set( gca, 'XTickLabel', colnames )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    ylabel( 'Fraction of units' )
+    title( 'Units that are excitatory (E) or inhibitory (I)' )
+    
+    subplot( 3, 3, 2 )
+    [ bh, eh ] = barwerror( 1 : 4, [ emat2( 3, [ 2 1 ] ) imat2( 3, [ 2 1 ] ) ] ...
+        , [ emat2( 4, [ 2 1 ] ) imat2( 4, [ 2 1 ] ) ] ...
+        , colors_NP( 1, : ), 0.8, [ 0 0 0 ], 2 );
+    colnames = { 'Excited-nunits', 'Excited-punits', 'Inhibited-nunits', 'Inhibited-punits' };
+    set( gca, 'XTickLabel', colnames )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    ylabel( 'Fraction of units' )
+    title( 'Units that receive excitation or inhibition' )
+    
+    subplot( 3, 3, 3 )
+    [ bh, eh ] = barwerror( 1 : 2, cmat( 3, [ 2 1 ] ), cmat( 4, [ 2 1 ] ) ...
+        , colors_NP( 1, : ), 0.8, [ 0 0 0 ], 2 );
+    colnames = { 'Connected-nunits', 'Connected-punits' };
+    set( gca, 'XTickLabel', colnames )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    ylabel( 'Fraction of units' )
+    title( 'Connected units' )
+    
+    subplot( 3, 3, 4 )
+    [ bh, eh ] = barwerror( 1 : 4, npost( 1, : ), npost( 2, : ) ...
+        , colors_NP( 1, : ), 0.8, [ 0 0 0 ], 2 );
+    colnames = { 'E-nunits', 'E-punits', 'I-nunits', 'I-punits' };
+    set( gca, 'XTickLabel', colnames )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    ylabel( 'Number of units' )
+    title( 'Post-synaptic peers for E and I units' )
+
+    subplot( 3, 3, 5 )
+    [ bh, eh ] = barwerror( 1 : 4, npre( 1, : ), npre( 2, : ) ...
+        , colors_NP( 1, : ), 0.8, [ 0 0 0 ], 2 );
+    colnames = { 'Excited-nunits', 'Excited-punits', 'Inhibited-nunits', 'Inhibited-punits' };
+    set( gca, 'XTickLabel', colnames )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    ylabel( 'Number units' )
+    title( 'Pre-synaptic peers for E (excitatory) and I (inhibitory) units' )
+    
+    subplot( 3, 3, 6 )
+    [ bh, eh ] = barwerror( 1 : 4, abs( asg( 1, : ) ), asg( 2, : ) ...
+        , colors_NP( 1, : ), 0.8, [ 0 0 0 ], 2 );
+    colnames = { 'E-nunits', 'E-punits', 'I-nunits', 'I-punits' };
+    set( gca, 'XTickLabel', colnames )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    ylabel( 'ASG' )
+    title( 'Mean ASG for E and I units' )
+
+    subplot( 3, 3, 7 )
+    [ bh, eh ] = barwerror( 1 : 2, asg( 1, 1 : 2 ), asg( 2, 1 : 2 ) ...
+        , colors_NP( 1, : ), 0.8, [ 0 0 0 ], 2 );
+    colnames = { 'E-nunits', 'E-punits' };
+    set( gca, 'XTickLabel', colnames )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    ylabel( 'ASG' )
+    title( 'Mean ASG for E units' )
+
+    subplot( 3, 3, 8 )
+    [ bh, eh ] = barwerror( 1 : 2, asg( 1, 3 : 4 ), asg( 2, 3 : 4 ) ...
+        , colors_NP( 1, : ), 0.8, [ 0 0 0 ], 2 );
+    colnames = { 'I-nunits', 'I-punits' };
+    set( gca, 'XTickLabel', colnames )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    ylabel( 'ASG' )
+    title( 'Mean ASG for I units' )
+    
+    %-----
+    % example of punit and CCH and ACH
+    
+    if ismac
+        filebase = filebaseLookup( 'mDL5', -16 );
+    elseif ispc
+        filebase = 'G:\mice\mDL5_16\mDL5_16';
+    elseif isunix
+        filebase = '/media/shirly/C22865A128659567/mice/mDL5/dat/mDL5_16/mDL5_16';    
+    end
+    fig3( 1 ) = figure;
+    plot_ss( filebase, [ 1 6 ] ); % punit with 5 post-synaptic peers and no pre
+    %mono.pairsExc( mono.pairsExc( :, 1 ) == 3, : )
+    % punit is on S1 (1.6)
+    % show CCH with a post-synaptic INT (S2; 2.11), and a post-synaptic PYR (S3; 3.52)
+    % note that [ 3 50 ] is also a punit, with multiple pre-synaptic peers
+    fig3( 2 ) = figure;
+    plot_ss( filebase, [ 2 11 ] );
+    fig3( 3 ) = figure;
+    plot_ss( filebase, [ 3 52 ] );
+    fig3( 4 ) = figure;
+    subplot( 2, 2, 1 )
+    plot_s2s( filebase, [ 1 6; 2 11 ], 'plotmode', -4 );
+    subplot( 2, 2, 2 )
+    plot_s2s( filebase, [ 1 6; 2 12 ], 'plotmode', -4 );
+    subplot( 2, 2, 3 )
+    plot_s2s( filebase, [ 1 6; 3 52 ], 'plotmode', -4 );
+    
+    % quantify the strength
+	load( [ filebase '.s2s' ], '-mat', 's2s' )
+    n12                         = [ 1 6; 2 11 ];
+    [ g1, g2, act, sil, s, fig ] = calc_asg( s2s, n12, 'graphics', 1 );
+    fig3( 5 ) = fig;
+    
+    n12                         = [ 1 6; 2 12 ];
+    [ g1, g2, act, sil, s, fig ] = calc_asg( s2s, n12, 'graphics', 1 );
+    fig3( 6 ) = fig;
+    
+    n12                         = [ 1 6; 3 52 ];
+    [ g1, g2, act, sil, s, fig ] = calc_asg( s2s, n12, 'graphics', 1 );
+    fig3( 7 ) = fig;
+   
+    %-----
+    % save the figures
+    fig = fig3;
+    if savef
+        for i = 1 : length( fig )
+            if fig( i ) == 0 || isempty( fig( i ) )
+                continue
+            end
+            figname = sprintf( '%s/punits_FIG3_part%d', outdir, i );
+            fig_out( fig( i ), 1, figname, savetype ),
+        end
+    end
+    
+    
+end
+
+% ----------------------------------------------------------------------
+% Figure 4
+% firing rate statistics (fano factor)
+% ----------------------------------------------------------------------
+
+if fignums( 4 )
+    
+    % intersect the units in the sst and the ff structures
+    u1                      = unique( sst.filebase );
+    u2                      = unique( ff.filebase );
+    u                       = unique( [ u1; u2 ] );
+    [ ~, f1 ]               = ismember( sst.filebase, u );
+    [ ~, f2 ]               = ismember( ff.filebase, u );
+    s1                      = [ f1 sst.shankclu ];
+    s2                      = [ f2 ff.shankclu( :, 1 : 2 ) ];
+    % since each item appears only once, we can use intersect
+    [ ~, i1, i2 ]           = intersect( s1, s2, 'rows' );
+    i1l                     = false( size( sst.shankclu, 1 ), 1 );
+    i1l( i1 )               = 1;
+    i2l                     = false( size( ff.shankclu, 1 ), 1 );
+    i2l( i2 )               = 1;
+    sst1                    = struct_select( sst, i1l );
+    ff1                     = struct_select( ff, i2l );
+    % merge the two structures
+    sst1                    = struct_merge( rmfield( sst1, 'shankclu' ), rmfield( ff1, 'filebase' ) );
+    
+    % remove units with negative FF??
+    ridx                    = sum( sst1.fanomat < 0, 2 );
+    sst1                    = struct_select( sst1, ~ridx );
+    
+    % process the data
+    
+    
+    % plot the figures
+    %--------------------------------
+    % ACH COM
+    fig4( 1 ) = figure; 
+    
+    ispos                   = sst1.extremum > 0;
+    nbins                   = 60;
+    byprob                  = 0;
+    subplot( 2, 2, 1 )
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( sst1.ach_com, ispos, nbins, colors_NP, 'ACH-COM [ms]', byprob );
+    lh.String{ 1 }          = 'Punits'; 
+    lh.String{ 2 }          = 'Nunits';
+
+    subplot( 2, 2, 2 )
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( sst1.ach_com, sst1.shankclu( :, 3 ) == 1, nbins, colors_PI, 'ACH-COM [ms]', byprob );
+    lh.String{ 1 }          = 'INT'; 
+    lh.String{ 2 }          = 'PYR';
+    
+    nbins                   = 30;
+    byprob                  = 1;
+    subplot( 2, 2, 3 )
+    sst1i                   = struct_select( sst1, ispos );
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( sst1i.ach_com, true( sum( ispos ), 1 ), nbins, colors_NP, 'ACH-COM [ms]', byprob );
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( sst1.ach_com, sst1.shankclu( :, 3 ) == 1, nbins, colors_PI, 'ACH-COM [ms]', byprob );
+    lh.String{ 1 }          = 'INT'; 
+    lh.String{ 2 }          = 'PYR';
+    
+    % statistics - KW and multiple comparisons
+    Xkw                     = sst1.ach_com;
+    Gkw                     = sst1.shankclu( :, 3 );
+    Gkw( ispos )            = 2;
+    [ Pkw, ~, Skw ]         = kruskalwallis( Xkw, Gkw,'off' );
+    Tmc                     = multcompare( Skw, 'displayopt', 'off' );
+    pvals                   = Tmc( :, 6 );
+    cnames                  = { 'INT-PYR', 'INT-Punits', 'PYR-Punits' };
+    title( sprintf( '%s: %0.2g; %s: %0.2g; %s: %0.2g', cnames{ 1 }, pvals( 1 ) ...
+        , cnames{ 2 }, pvals( 2 ), cnames{ 3 }, pvals( 3 ) ) )
+    
+    %--------------------------------
+    % FF - baseline rates
+    fig4( 3 )               = figure;
+    ispos                   = sst1.extremum > 0;
+    nbins                   = 60;
+    byprob                  = 0;
+    subplot( 2, 2, 1 )
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( log2( sst1.baseline ), ispos, nbins, colors_NP, 'Log Firing rate [spk/s]', byprob );
+    lh.String{ 1 }          = 'Punits'; 
+    lh.String{ 2 }          = 'Nunits';
+    lin2log( 'x', 2, 5 );
+
+    subplot( 2, 2, 2 )
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( log2( sst1.baseline ), sst1.shankclu( :, 3 ) == 1, nbins, colors_PI, 'Log Firing rate [spk/s]', byprob );
+    lh.String{ 1 }          = 'INT'; 
+    lh.String{ 2 }          = 'PYR';
+    lin2log( 'x', 2, 5 );
+    
+    nbins                   = 30;
+    byprob                  = 1;
+    subplot( 2, 2, 3 )
+    sst1i                   = struct_select( sst1, ispos );
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( log2( sst1i.baseline ), true( sum( ispos ), 1 ), nbins, colors_NP, 'Log Firing rate [spk/s]', byprob );
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( log2( sst1.baseline ), sst1.shankclu( :, 3 ) == 1, nbins, colors_PI, 'Log Firing rate [spk/s]', byprob );
+    lh.String{ 1 }          = 'INT'; 
+    lh.String{ 2 }          = 'PYR';
+    lin2log( 'x', 2, 5 );
+    
+    % statistics - KW and multiple comparisons
+    Xkw                     = sst1.ach_com;
+    Gkw                     = sst1.shankclu( :, 3 );
+    Gkw( ispos )            = 2;
+    [ Pkw, ~, Skw ]         = kruskalwallis( Xkw, Gkw,'off' );
+    Tmc                     = multcompare( Skw, 'displayopt', 'off' );
+    pvals                   = Tmc( :, 6 );
+    cnames                  = { 'INT-PYR', 'INT-Punits', 'PYR-Punits' };
+    title( sprintf( '%s: %0.2g; %s: %0.2g; %s: %0.2g', cnames{ 1 }, pvals( 1 ) ...
+        , cnames{ 2 }, pvals( 2 ), cnames{ 3 }, pvals( 3 ) ) )
+    
+    %--------------------------------
+    % FF 
+    % to do - look at individual images
+    fig4( 2 )                   = figure;
+    hold on
+    for i                       = 0 : 2
+        
+        idx                     = Gkw == i;
+        y                       = sst1.fanomat( idx, : );
+        y                       = outliers( y, 3, [], 1, 2 );       % remove outliers
+        x                       = sst1.winsizes( 1, : );
+        if i < 2
+            c1                  = colors_PI( i + 1, : );
+        else
+            c1                  = colors_NP( 2, : );
+        end
+        c2                      = [];
+        
+        %plot( log2( x ), nangeomean( y, 1 ), 'b' );
+        ph                      = patch_band( log2( x / 20 ), nangeomean( y, 1 ), calc_sem( y, 1 ), c1, c2 );
+        
+    end
+    for i                       = 0 : 2
+        
+        idx                     = Gkw == i;
+        y                       = sst1.fanomat( idx, : );
+        y                       = outliers( y, 3, [], 1, 2 );       % remove outliers
+        x                       = sst1.winsizes( 1, : );
+        if i < 2
+            c1                  = colors_PI( i + 1, : );
+        else
+            c1                  = colors_NP( 2, : );
+        end
+        c2                      = [];
+        
+        ph                      = plot( log2( x / 20 ), nangeomean( y, 1 ), '.-' );
+        set( ph, 'MarkerSize', 20, 'color', c1 )
+        
+    end
+    lin2log( 'x', 2, 1 );
+    
+    xlim( log2( x( [ 1 end ] ) / 20 ) )
+    xlabel( 'Window [ms]' )
+    
+    ylims = ylim; 
+    set( gca, 'yscale', 'log' ), 
+    ylim( [ 0.95 ylims( 2 ) ] )
+    ylabel( 'Fano factor' )
+
+    alines( 1, 'y', 'color', [ 0 0 0 ], 'linestyle', '--' );
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    
+    % LR/ID parameter
+    
+    fig4( 3 ) = figure; 
+
+    ispos                   = sst1.extremum > 0;
+    nbins                   = 60;
+    byprob                  = 0;
+    subplot( 2, 2, 1 )
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( sst1.Lratio, ispos, nbins, colors_NP, 'Lratio', byprob );
+    lh.String{ 1 }          = 'Punits'; 
+    lh.String{ 2 }          = 'Nunits';
+
+    subplot( 2, 2, 2 )
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( sst1.Lratio, sst1.shankclu( :, 3 ) == 1, nbins, colors_PI, 'Lratio', byprob );
+    lh.String{ 1 }          = 'INT'; 
+    lh.String{ 2 }          = 'PYR';
+    
+    nbins                   = 30;
+    byprob                  = 1;
+    subplot( 2, 2, 3 )
+    sst1i                   = struct_select( sst1, ispos );
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( sst1i.Lratio, true( sum( ispos ), 1 ), nbins, colors_NP, 'Lratio', byprob );
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( sst1.Lratio, sst1.shankclu( :, 3 ) == 1, nbins, colors_PI, 'Lratio', byprob );
+    lh.String{ 1 }          = 'INT'; 
+    lh.String{ 2 }          = 'PYR';
+    
+    % statistics - KW and multiple comparisons
+    Xkw                     = sst1.Lratio;
+    Gkw                     = sst1.shankclu( :, 3 );
+    Gkw( ispos )            = 2;
+    [ Pkw, ~, Skw ]         = kruskalwallis( Xkw, Gkw,'off' );
+    Tmc                     = multcompare( Skw, 'displayopt', 'off' );
+    pvals                   = Tmc( :, 6 );
+    cnames                  = { 'INT-PYR', 'INT-Punits', 'PYR-Punits' };
+    title( sprintf( '%s: %0.2g; %s: %0.2g; %s: %0.2g', cnames{ 1 }, pvals( 1 ) ...
+        , cnames{ 2 }, pvals( 2 ), cnames{ 3 }, pvals( 3 ) ) )
+    
+    % ISI-index parameter
+
+    fig4( 4 ) = figure; 
+
+    ispos                   = sst1.extremum > 0;
+    nbins                   = 60;
+    byprob                  = 0;
+    subplot( 2, 2, 1 )
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( sst1.ISIindex, ispos, nbins, colors_NP, 'ISIindex', byprob );
+    lh.String{ 1 }          = 'Punits'; 
+    lh.String{ 2 }          = 'Nunits';
+
+    subplot( 2, 2, 2 )
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( sst1.ISIindex, sst1.shankclu( :, 3 ) == 1, nbins, colors_PI, 'ISIindex', byprob );
+    lh.String{ 1 }          = 'INT'; 
+    lh.String{ 2 }          = 'PYR';
+    
+    nbins                   = 30;
+    byprob                  = 1;
+    subplot( 2, 2, 3 )
+    sst1i                   = struct_select( sst1, ispos );
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( sst1i.ISIindex, true( sum( ispos ), 1 ), nbins, colors_NP, 'ISIindex', byprob );
+    [ myus, sds, pval, bins_x, hx0, hx1, lh ] = make_punits_figures_one_hist( sst1.ISIindex, sst1.shankclu( :, 3 ) == 1, nbins, colors_PI, 'ISIindex', byprob );
+    lh.String{ 1 }          = 'INT'; 
+    lh.String{ 2 }          = 'PYR';
+    
+    % statistics - KW and multiple comparisons
+    Xkw                     = sst1.ISIindex;
+    Gkw                     = sst1.shankclu( :, 3 );
+    Gkw( ispos )            = 2;
+    [ Pkw, ~, Skw ]         = kruskalwallis( Xkw, Gkw,'off' );
+    Tmc                     = multcompare( Skw, 'displayopt', 'off' );
+    pvals                   = Tmc( :, 6 );
+    cnames                  = { 'INT-PYR', 'INT-Punits', 'PYR-Punits' };
+    title( sprintf( '%s: %0.2g; %s: %0.2g; %s: %0.2g', cnames{ 1 }, pvals( 1 ) ...
+        , cnames{ 2 }, pvals( 2 ), cnames{ 3 }, pvals( 3 ) ) )
+    
+    %-----
+    % save the figures
+    fig = fig4;
+    if savef
+        for i = 1 : length( fig )
+            if fig( i ) == 0 || isempty( fig( i ) )
+                continue
+            end
+            figname = sprintf( '%s/punits_FIG4_part%d', outdir, i );
+            fig_out( fig( i ), 1, figname, savetype ),
+        end
+    end
+    
+    
+end
+
+% ----------------------------------------------------------------------
+% Figure 5
+% Place analyses
+% ----------------------------------------------------------------------
+
+if fignums( 5 )
+
+    % load Hadas's data
+    L                       = load( [ datadir_hadas fname_hadas '.mat' ], '-mat' );
+    
+    % partition into two separate structures
+    fieldnames              = fields( L );
+    nfields                 = length( fieldnames );
+    n_all                   = size( getfield( L, 'all_session_tag' ), 1 );
+    n_fields                = size( getfield( L, 'session_tag' ), 1 );
+    for i                   = 1 : nfields
+        
+        nrow                = size( getfield( L, fieldnames{ i } ), 1 );
+        if nrow == n_all
+            eval( sprintf( 's_all.%s = L.%s;', fieldnames{ i }, fieldnames{ i } ) )
+        elseif nrow == n_fields
+            eval( sprintf( 's_field.%s = L.%s;', fieldnames{ i }, fieldnames{ i } ) )
+        end
+           
+    end
+    
+    % add the extremum field from sst to the relevant items in s_all
+    s_all.all_extremum      = NaN( n_all, 1 );
+    u1                      = unique( sst.filebase );
+    u2                      = unique( s_all.all_session_tag );
+    u                       = unique( [ u1; u2 ] );
+    [ ~, f1 ]               = ismember( sst.filebase, u );
+    [ ~, f2 ]               = ismember( s_all.all_session_tag, u );
+    s1                      = [ f1 sst.shankclu ];
+    s2                      = [ f2 s_all.all_shankclu( :, 1 : 2 ) ];
+    % if Hadas's data were unique, then we could write:
+    %     [ ~, i1, i2 ]           = intersect( s1, s2, 'rows' );
+    %     s_all.extremum( i2, : ) = sst.extremum( i1, : );
+    % since it is not unique, we use the following:
+    us2                     = unique( s2, 'rows' );
+    nus2                    = size( us2, 1 );
+    for i                   = 1 : nus2
+        i1                  = ismember( s1, us2( i, : ), 'rows' );
+        i2                  = ismember( s2, us2( i, : ), 'rows' );
+        if sum( i1 ) > 0
+            s_all.all_extremum( i2, : ) = repmat( sst.extremum( i1, : ), [ sum( i2 ) 1 ] );
+        end
+    end
+    
+    % do the same for the s_field:
+    s_field.extremum        = NaN( n_fields, 1 );
+    u2                      = unique( s_field.session_tag );
+    u                       = unique( [ u1; u2 ] );
+    [ ~, f2 ]               = ismember( s_field.session_tag, u );
+    s2                      = [ f2 s_field.shankclu( :, 1 : 2 ) ];
+    us2                     = unique( s2, 'rows' );
+    nus2                    = size( us2, 1 );
+    for i                   = 1 : nus2
+        i1                  = ismember( s1, us2( i, : ), 'rows' );
+        i2                  = ismember( s2, us2( i, : ), 'rows' );
+        if sum( i1 ) > 0
+            s_field.extremum( i2, : ) = repmat( sst.extremum( i1, : ), [ sum( i2 ) 1 ] );
+        end
+    end
+
+    % combine back for Hadas
+    s_combined              = struct_merge( s_all, s_field );
+    savename                = [ datadir_hadas fname_hadas '_extremum.mat' ];
+    save( savename, 's_combined' )
+    
+    % process the data
+    eidx                    = s_all.all_shankclu( :, 3 ) == 1; % PYR
+    iidx                    = s_all.all_shankclu( :, 3 ) == 0; % INT
+    pidx                    = s_all.all_extremum > 0; % PUNIT
+    eidx( pidx )            = 0; % NUNIT PYR 
+    iidx( pidx )            = 0; % NUNIT INT
+    colnames                = { 'bits/s', 'bits/spike' };
+    row_names               = { 'PYR', 'INT', 'Punits' };
+    info_meds               = [ median( s_all.all_info( eidx, : ) )
+                                median( s_all.all_info( iidx, : ) )
+                                median( s_all.all_info( pidx, : ) ) ];
+    info_sem                = [ calc_sem( s_all.all_info( eidx, : ) )
+                                calc_sem( s_all.all_info( iidx, : ) )
+                                calc_sem( s_all.all_info( pidx, : ) ) ];
+                            
+    % plot the figures
+    fig5( 1 )               = figure;
+    for i = 1 : 2
+        subplot( 2, 2, i )
+        [ bh, eh ] = barwerror( 1 : 3, info_meds( :, i ), info_sem( :, i ) ...
+            , colors_NP( 1, : ), 0.8, [ 0 0 0 ], 2 );
+        set( gca, 'XTickLabel', row_names )
+        set( gca, 'tickdir', 'out', 'box', 'off' )
+        ylabel( colnames{ i } )
+        title( 'Spatial information' )
+    end
+    
+    % do the same for many other interesting spatial features at the unit
+    % and at the field level...
+    
+    fig5( 2 ) = figure;
+
+    %-----
+    % save the figures
+    fig = fig5;
+    if savef
+        for i = 1 : length( fig )
+            if fig( i ) == 0 || isempty( fig( i ) )
+                continue
+            end
+            figname = sprintf( '%s/punits_FIG5_part%d', outdir, i );
+            fig_out( fig( i ), 1, figname, savetype ),
+        end
+    end
+    
+    
+end
+
+% ----------------------------------------------------------------------
+% Figure 6
+% 
+% ----------------------------------------------------------------------
+
+if fignums( 6 )
+    
+    % process the data
+    didx                = ~isnan( sst.depth );
+    sst1                = struct_select( sst, didx );
+    pidx                = sst1.extremum > 0;
+    w                   = sst1.geo_fwhm;
+    d                   = sst1.depth * 20; % [um]
+    amp                 = abs( sst1.extremum );
+    
+    % open points:
+    % 1. note that mC41 is 15 um spacing
+    % 2. also note that in many cases, sst.depth was computed without flipping
+    % - should be modified one by one (not necessarily for all)
+    
+    % determine spatial bins:
+    binsize             = 20; 
+    minVal              = floor( min( d ) / binsize ) * binsize;
+    maxVal              = ceil( max( d ) / binsize ) * binsize;
+    rside               = ( 0 + binsize / 2 ) : binsize : ( maxVal + binsize / 2 );
+    lside               = ( 0 + binsize / 2 ) : binsize : ( -minVal + binsize / 2 );
+    edges               = [ fliplr( -lside ) rside ];
+    binC                = ( edges( 1 : end - 1 )  + edges( 2 : end ) )' / 2;
+    
+    % compute histograms
+    hh                  = histc( d( ~pidx ), edges );
+    hh( end - 1 )       = hh( end - 1 ) + hh( end ); 
+    hh( end )           = [];
+    h0                  = hh;
+    
+    hh                  = histc( d( pidx ), edges );
+    hh( end - 1 )       = hh( end - 1 ) + hh( end ); 
+    hh( end )           = [];
+    h1                  = hh;
+    
+    % plot the figures
+    fig6( 1 )           = figure;
+    subplot( 2, 2, 1 )
+    barh( binC, h0, 1, 'EdgeColor', colors_NP( 1, : ), 'FaceColor', colors_NP( 1, : ) )
+    xlabel( 'Nunit count' )
+    ylabel( 'Depth [\mum]' )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    alines( 0, 'y', 'color', [ 0 0 0 ], 'linestyle', '--' );
+    
+    subplot( 2, 2, 2 )
+    barh( binC, h1, 1, 'EdgeColor', colors_NP( 2, : ), 'FaceColor', colors_NP( 2, : ) )
+    xlabel( 'Punit count' )
+    ylabel( 'Depth [\mum]' )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    alines( 0, 'y', 'color', [ 0 0 0 ], 'linestyle', '--' );
+    
+    subplot( 2, 2, 3 )
+    frcts               = h1 ./ ( h0 + h1 );
+    minCount            = 2;
+    frcts( ( h0 + h1 ) <= minCount ) = NaN;
+    barh( binC, frcts, 1, 'EdgeColor', colors_NP( 2, : ), 'FaceColor', colors_NP( 2, : ) )
+    xlabel( 'Fraction of Punits' )
+    ylabel( 'Depth [\mum]' )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    alines( 0, 'y', 'color', [ 0 0 0 ], 'linestyle', '--' );
+
+    % plot some statstic by depth
+    fig6( 2 ) = figure;
+    subplot( 2, 2, 1 )
+    hold on, 
+    ph( 1 ) = plot( w( ~pidx ), d( ~pidx ), '.' ); 
+    ph( 2 ) = plot( w( pidx ), d( pidx ), '.' ); 
+    set( ph, 'MarkerSize', 10 )
+    set( ph( 1 ), 'color', colors_NP( 1, : ) )    
+    set( ph( 2 ), 'color', colors_NP( 2, : ) )    
+    xlabel( 'FWHM' )
+    ylabel( 'Depth [\mum]' )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    alines( 0, 'y', 'color', [ 0 0 0 ], 'linestyle', '--' );
+    
+    subplot( 2, 2, 2 )
+    hold on, 
+    ph( 1 ) = plot( amp( ~pidx ), d( ~pidx ), '.' ); 
+    ph( 2 ) = plot( amp( pidx ), d( pidx ), '.' ); 
+    set( ph, 'MarkerSize', 10 )
+    set( ph( 1 ), 'color', colors_NP( 1, : ) )    
+    set( ph( 2 ), 'color', colors_NP( 2, : ) )    
+    xlabel( 'Ampplitude [\muV]' )
+    ylabel( 'Depth [\mum]' )
+    set( gca, 'tickdir', 'out', 'box', 'off' )
+    alines( 0, 'y', 'color', [ 0 0 0 ], 'linestyle', '--' );
+    
+    %-----
+    % save the figures
+    fig = fig6;
+    if savef
+        for i = 1 : length( fig )
+            if fig( i ) == 0 || isempty( fig( i ) )
+                continue
+            end
+            figname = sprintf( '%s/punits_FIG6_part%d', outdir, i );
+            fig_out( fig( i ), 1, figname, savetype ),
+        end
+    end
+    
+    
+end
+
+% ----------------------------------------------------------------------
+% Figure 7
+% optical responses
+% ----------------------------------------------------------------------
+
+if fignums( 7 )
+    
+    % process the data
+    
+    % go over sessions
+    % for each session, check if there is a celltypeClassification 
+    % if there is, load it, and check the following:
+    % -opsinType field is no empty
+    % -peth field has second dimension with 201 elements (default of celltypeClassification)
+    
+    % select, for each unit, the local stimulation channel and extract the 
+    % peth, bins, pact, psup, gain
+    % also, keep the act
+    
+    % module #1 - 
+    % go over global sst stucture and get celltypeClassification results for each session
+
+    % parameters that depend on the parameters used during celltypeClassification 
+    nPethBins       = 201;
+    ilevel          = 'B'; 
+    
+    % where to load the data from - either datadir or the actual filebase
+    loadMode        = 'datadir';
+    wavRange        = [ 350 500 ];                          % UV LED, blue LD, blue LED
+    %wavRange        = [ 550 700 ];
+    
+    usess           = unique( sst.filebase );
+    
+    %%%%%%%%%%%%%%
+    % remove this line 
+    %usess           = usess( [ 76 78 ] );
+    %%%%%%%%%%%%%%
+    nsess           = length( usess );
+    
+    ii                              = 0;
+    for i                           = 1 : nsess
+        % the indices in the global sst
+        asess                       = usess{ i };
+        uidx                        = ismember( sst.filebase, asess );
+        % initialize an output structure for the session
+        ssti                        = struct_select( sst, uidx );
+        nunits                      = size( ssti.filebase, 1 );
+        si.filebase                 = repmat( ssti.filebase( 1 ), [ nunits 1 ] );
+        si.shankclu                 = NaN( nunits, 3 );
+
+        lv                          = false( nunits, 1 );
+        nv                          = zeros( nunits, 1 );
+        cv                          = cell( nunits, 1 );
+        pv                          = zeros( nunits, nPethBins );
+        
+        si.opsinType                = cv;               % cell array of strings, e.g. pv::chr2
+        si.act                      = lv;               % boolean flag - is light controlled (activated or silenced)
+        si.exc                      = lv;               % boolean flag - is an excitatory unit
+        si.inh                      = lv;               % boolean flag - is an inhibitory unit
+        
+        si.pact                     = nv;               % p-value for activation
+        si.psup                     = nv;               % p-value for silencing
+        si.gain                     = nv;               % gain
+        
+        si.peth                     = pv;               % PETH during local stimulation
+        si.bins                     = pv;               % PETH bins during local stimulation
+
+        % load the s and the shank/stimulation asssociation for each filebase
+        try
+            switch loadMode
+                case 'filebase'
+                    filebase                = filebaseLookup( si.filebase{ 1 } );
+                    % get the association between channels, targets, and wavelengths
+                    [ chans, targets, ~, ~, wavelength ]      = get_stimchans( filebase );
+                    % get the results of the celltype classification 
+                    sctc                    = celltypeClassification( filebase, 'Overwrite', -1 );
+                case 'datadir'
+                    suffix                  = si.filebase{ 1 };
+                    % get the association between channels, targets, and wavelengths
+                    xmlfname                = [ datadir 'xml/' suffix '.prm.xml' ];
+                    if ~exist( xmlfname, 'file' )
+                        fprintf( 1, '%d: Missing data (*.prm.xml file) for %s\n', i, usess{ i } )
+                        continue
+                    end
+                    par                     = LoadXml( xmlfname );
+                    [ chans, targets, ~, ~, wavelength ]      = get_stimchans( par );
+                    % decide which cell type file to use
+                    kidx                   = inrange( wavelength, wavRange );
+                    if sum( kidx ) == 0
+                        fprintf( 1, '%d: Missing data (no stim channels within %d to %d nm ) for %s\n'...
+                            , i, wavRange( 1 ), wavRange( 2 ), usess{ i } )
+                        continue
+                    end
+                    chans( ~kidx )          = [];
+                    targets( ~kidx )        = [];
+                    wavelength( ~kidx )     = [];
+                    ctwildcard              = sprintf( '%sdc/%s.*_c%s.celltypeClassification', datadir, suffix, ilevel );
+                    fnames                  = dir( ctwildcard );
+                    if isempty( fnames )
+                        fprintf( 1, '%d: Missing data (no celltypeClassification at ilevel %s) for %s\n'...
+                            , i, ilevel, usess{ i } )
+                        continue
+                    end
+                    ctfname                 = '';
+                    for j = 1 : length( fnames )
+                        dots                = strfind( fnames( j ).name, '.' );
+                        corename            = fnames( j ).name( ( dots( 1 ) + 1 ) : ( dots( 2 ) - 1 ) );
+                        if contains( corename, num2strs( chans ) )
+                            ctfname         = fnames( j ).name;
+                            break
+                        end
+                    end
+                    if isempty( ctfname )
+                        fprintf( 1, '%d: Missing data (no celltypeClassification within %d to %d nm) for %s\n'...
+                            , i, wavRange( 1 ), wavRange( 2 ), usess{ i } )
+                        continue
+                    end
+                    % get the results of the celltype classification 
+                    ctfullname              = sprintf( '%sdc/%s', datadir, ctfname );
+%                     L                       = load( ctfullname, '-mat' );
+%                     s = L.z.s; stats = L.z.stats; save( ctfullname, 's', 'stats' )
+                    L                       = load( ctfullname, '-mat' );
+                    try
+                        sctc                    = L.s;
+                    catch
+                        sctc                = L.z.s;
+                    end
+                    % temporary hack - convert nested cell arrays to strings
+                    for l                   = 1 : size( si.opsinType, 1 )
+                        otype               = si.opsinType{ l };
+                        if isa( otype, 'cell' ) && isa( otype{ 1 }, 'char' )
+                            si.opsinType{ l } = otype{ 1 };
+                        end
+                    end
+            end
+        catch
+            fprintf( 1, '%d: Missing data (either celltype, stimchans, or both) for %s\n', i, usess{ i } )
+            continue
+        end
+        if ~isequal( sctc.shankclu( :, 1 :  2 ), ssti.shankclu )
+            fprintf( 1, '%d: Data mismatch for %s\n', i, usess{ i } )
+            continue
+        end
+        shanks                      = sctc.shankclu( :, 1 );
+        ushanks                     = unique( shanks );
+        nshanks                     = length( ushanks );
+        for j                       = 1 : nshanks
+            ashank                  = ushanks( j );
+            achan                   = chans( targets == ashank );
+            if isempty( achan )
+                continue
+            end
+            uidx                    = sctc.shankclu( :, 1 ) == ashank;
+            imat                    = permute( sctc.pinfo( uidx, 6, : ), [ 1 3 2 ] ) == achan;
+            if size( imat, 1 ) ~= max( sum( imat, 1 ) ) && max( sum( imat, 1 ) ) ~= 0
+                fprintf( 1, '%d: Data mismatch for %s in shank %d\n', i, usess{ i }, ashank )
+                continue
+                % thus, all units in the shank are associated with the same trigchan
+            end
+            [ ~, cidx ]             = find( imat ); % vector of the index of the trigchan
+            if isempty( cidx )
+                continue
+            end
+            if length( unique( cidx ) ) ~= 1
+                error( 'should never happen' )
+            end
+            si.shankclu( uidx, : )  = sctc.shankclu( uidx, : );
+            si.opsinType( uidx, : ) = sctc.opsinType( uidx, : );
+            si.act( uidx, : )       = sctc.act( uidx, : );
+            si.exc( uidx, : )       = sctc.exc( uidx, : );
+            si.inh( uidx, : )       = sctc.inh( uidx, : );
+            si.pact( uidx, : )      = sctc.pact( uidx, cidx( 1 ) );
+            si.psup( uidx, : )      = sctc.psup( uidx, cidx( 1 ) );
+            si.gain( uidx, : )      = sctc.gain( uidx, cidx( 1 ) );
+            si.peth( uidx, : )      = sctc.peth( uidx, :, cidx( 1 ) );
+            si.bins( uidx, : )      = sctc.bins( uidx, :, cidx( 1 ) );
+        end
+        % keep only populated units
+        kidx                        = ~isnan( si.shankclu( :, 1 ) );
+        si                          = struct_select( si, kidx, 1 );
+        % accumulate over sessions
+        ii                          = ii + 1;
+        if ii == 1
+            s                       = si;
+        else
+            s                       = struct_cat( s, si );
+        end
+            
+    end
+    
+    
+    % check if equal
+%     if ~isequal( s.filebase, sst.filebase  )
+%         error( 'fix all issues first' )
+%     end
+%     for i = 1 : size( s.filebase, 1 )
+%         eq( i ) = isequal( s.filebase( i ), sst.filebase( i ) ); 
+%     end
+%     neq = find( ~eq );
+    
+% module #3 - intersect units
+
+    % intersect the units in the sst and the ff structures
+    u1                      = unique( sst.filebase );
+    u2                      = unique( s.filebase );
+    u                       = unique( [ u1; u2 ] );
+    [ ~, f1 ]               = ismember( sst.filebase, u );
+    [ ~, f2 ]               = ismember( s.filebase, u );
+    s1                      = [ f1 sst.shankclu ];
+    s2                      = [ f2 s.shankclu( :, 1 : 2 ) ];
+    % check that unique and no NaNs
+    if ~isequal( size( unique( s1, 'rows' ) ), size( s1 ) )
+        error( 'Repeating items in s1\n' )
+    end
+    if ~isequal( size( unique( s2, 'rows' ) ), size( s2 ) )
+        error( 'Repeating items in s2\n' )
+    end
+    if sum( isnan( s1( : ) ) ) ~= 0
+        error( 'NaNs in s1\n' )
+    end
+    if sum( isnan( s2( : ) ) ) ~= 0
+        error( 'NaNs in s2\n' )
+    end
+    % since each item appears only once, we can use intersect
+    [ ~, i1, i2 ]           = intersect( s1, s2, 'rows' );
+    i1l                     = false( size( sst.shankclu, 1 ), 1 );
+    i1l( i1 )               = 1;
+    i2l                     = false( size( s.shankclu, 1 ), 1 );
+    i2l( i2 )               = 1;
+    sst1                    = struct_select( sst, i1l );
+    ff1                     = struct_select( s, i2l );
+    % merge the two structures
+    sst1                    = struct_merge( rmfield( sst1, 'shankclu' ), rmfield( ff1, 'filebase' ) );
+    % add tag for punits
+    pidx                    = sst1.extremum > 0;
+    sst1.shankclu( pidx, : ) = 2;  % step over the INT/PYR for punits
+    
+    
+    % temporary hack - convert nested cell arrays to strings
+    for i                   = 1 : size( sst1.opsinType, 1 )
+        otype               = sst1.opsinType{ i };
+        if isa( otype, 'cell' ) && isa( otype{ 1 }, 'char' )
+            sst1.opsinType{ i } = otype{ 1 };
+            
+        end
+    end
+    
+    % temporary hack #2 - remove items for which opsinType is empty
+    ridx = false( length( sst1.opsinType ), 1 ); 
+    for i = 1 : length( sst1.opsinType )
+        if isempty( sst1.opsinType{ i } )
+            ridx( i ) = 1;
+        end
+    end
+    if sum( ridx ) > 0
+        fprintf( 1, 'Removing %d units without opsinType\n', sum( ridx ) )
+        sst1 = struct_select( sst1, ~ridx );
+    end
+    
+    % temporary hack #3 - change camk::chr2 to camkii::chr2
+    hidx                    = ismember( sst1.opsinType, 'camk::chr2' ); 
+    sst1.opsinType( hidx )  = repmat( { 'camkii::chr2' }, [ sum( hidx ) 1 ] );
+    
+    % plot the figures
+    % constants
+    xlims                   = [ -100 150 ]; % [ms]
+    ctypes                  = { 'INT', 'PYR', 'Punit' };
+    opsinTypes              = { 'camkii::chr2', 'vip::chr2', 'pv::chr2', 'pv::jaws', 'cck::chr2' };
+    
+    % select a subset of units
+    aidx                    = sst1.act;
+    j                       = 0;
+    for onum                = 1 : length( opsinTypes )
+        opsinType           = opsinTypes{ onum };
+        oidx                = ismember( sst1.opsinType, opsinType );
+        if sum( oidx ) == 0
+            fprintf( 1, 'No units with %s found\n', opsinType )
+            continue
+        end
+        if sum( oidx & aidx ) == 0
+            fprintf( 1, 'No units with %s and optical activation/silencing found\n', opsinType )
+            continue
+        end
+        
+        j                   = j + 1;
+        [ ah, fh ]          = tilefig( 1, 3, -2, 0.75, 'center' );
+        fig7( j )           = fh;
+        xvals                   = median( sst1.bins( oidx, : ), 1 )' * 1000; % time [ms]
+        for ct                  = 0 : 2
+            cidx                = sst1.shankclu( :, 3 ) == ct;
+            idx                 = aidx & oidx & cidx;
+            % to do: 
+            % keep the following and create bar with error bars
+            %sum( idx )
+            %sum( oidx & cidx )
+            if sum( idx ) == 0
+                subplot( ah( ct + 1, 1 ) )
+                axis off
+                subplot( ah( ct + 1, 2 ) )
+                axis off
+                continue
+            end
+            peth                = sst1.peth( idx, : )';
+            yvals               = 1 : size( peth, 2 );
+            speth               = scale( peth );
+            myu                 = mean( peth, 2 );
+            sem                 = calc_sem( peth, 2 );
+            %myu                 = mean( speth, 2 );
+            %sem                 = calc_sem( speth, 2 );
+            switch ct
+                case { 0, 1 }
+                    color1      = colors_PI( ct + 1, : );
+                    color2      = colors_PI_light( ct + 1, : );
+                case 2
+                    color1      = colors_NP( 2, : );
+                    color2      = colors_NP_light( 2, : );
+            end
+            
+            subplot( ah( ct + 1, 1 ) )
+            patch_band( xvals, myu, sem, color1, color2 );
+            xlim( xlims )
+            set( gca, 'tickdir', 'out', 'box', 'off' );
+            ylabel( 'Firing rate [spks/s]' )
+            title( sprintf( '%s, %s', opsinType, ctypes{ ct + 1 } ) )
+            
+            subplot( ah( ct + 1, 2 ) )
+            imagesc( xvals, yvals, speth' )
+            axis xy,
+            colormap( myjet )
+            xlim( xlims )
+            xlabel( 'Time [ms]' )
+            ylabel( 'Unit number' )
+            set( gca, 'ytick', yvals )
+            %yvals( 1 : ceil( length( yvals ) / 10 ) : length( yvals ) )
+            set( gca, 'tickdir', 'out', 'box', 'off' );
+            
+            % add stim lines and patch
+            
+        end
+    end
+    
+    %fig7( 2 ) = figure;
+
+    %-----
+    % save the figures
+    fig = fig7;
+    if savef
+        for i = 1 : length( fig )
+            if fig( i ) == 0 || isempty( fig( i ) )
+                continue
+            end
+            figname = sprintf( '%s/punits_FIG7_part%d', outdir, i );
+            fig_out( fig( i ), 1, figname, savetype ),
+        end
+    end
+    
+    
+end
+
+% ----------------------------------------------------------------------
+% Figure 8
+% subclusters
+% ----------------------------------------------------------------------
+
+if fignums( 8 )
+    
+    % process the data
+    ispos                       = sst.extremum > 0;
+    sst.shankclu( :, 3 )        = sst.pyr;
+    sst.shankclu( ispos, 3 )    = 2;
+    
+    % plot the figures
+    
+    %------------------------------------------------------------------
+    % (1) histograms of each feature - nunits vs. punits (similar to figure 2 - "by prob")
+
+    nbins1          = 60;
+    nbins           = 30;
+    byprob          = 1;
+    make_legend     = 0;
+    
+    fig8( 1 ) = figure;
+    subplot( 2, 3, 1 )
+    [ myus, sds, pval, bins_x, hx0, hx1 ] = make_punits_figures_one_hist( sst.maxp2p * 1000, ispos, nbins1, colors_NP, 'Amp [\muV]', byprob );
+    
+    subplot( 2, 3, 2 );
+    [ t2p_myus, t2p_sds, t2p_pval, bins_x, hx0, hx1 ] = make_punits_figures_one_hist( sst.tp, ispos, nbins, colors_NP, 'T2P [ms]', byprob, make_legend );
+
+    subplot( 2, 3, 3 );
+    [ t2p_myus, t2p_sds, t2p_pval, bins_x, hx0, hx1 ] = make_punits_figures_one_hist( sst.tp, ispos, nbins, colors_NP, 'T2P [ms]', byprob, make_legend );
+    ylim( [ 0 0.2 ] )
+    
+    subplot( 2, 3, 4 );
+    [ wid_myus, wid_sds, wid_pval, bins_x, hx0, hx1 ] = make_punits_figures_one_hist( 1 ./ sst.fmax * 1000, ispos, nbins, colors_NP, 'Width [ms]', byprob, make_legend );
+    
+    subplot( 2, 3, 5 );
+    [ gsd_myus, gsd_sds, gsd_pval, bins_x, hx0, hx1 ] = make_punits_figures_one_hist( sst.geo_sd, ispos, nbins, colors_NP, 'Geo-SD [sites]', byprob, make_legend );
+    
+    subplot( 2, 3, 6 );
+    [ fwh_myus, fwh_sds, fwh_pval, bins_x, hx0, hx1 ] = make_punits_figures_one_hist( sst.geo_fwhm, ispos, nbins, colors_NP, 'Geo-FWHM [sites]', byprob, make_legend );
+
+    for i               = 1 : 6
+        subplot( 2, 3, i )
+        axis square
+    end
+    
+    fig8( 2 ) = figure;
+
+    subplot( 2, 3, 1 );
+    [ asy_myus, asy_sds, asy_pval, bins_x, hx0, hx1 ] = make_punits_figures_one_hist( sst.asy, ispos, nbins, colors_NP, 'Assymetry', byprob, make_legend );
+    
+    subplot( 2, 3, 2 );
+    [ myus, sds, pval, bins_x, hx0, hx1 ] = make_punits_figures_one_hist( sst.bpi, ispos, nbins, colors_NP, 'Bi-Polarity', byprob, make_legend );
+    alines( 0, 'x', 'color', [ 0 0 0 ], 'linestyle', '--' );
+    
+    subplot( 2, 3, 3 );
+    [ myus, sds, pval, bins_x, hx0, hx1 ] = make_punits_figures_one_hist( sst.bpi, ispos, nbins, colors_NP, 'Bi-Polarity', byprob, make_legend );
+    ylim( [ 0 0.1 ] )
+    alines( 0, 'x', 'color', [ 0 0 0 ], 'linestyle', '--' );
+    
+    subplot( 2, 3, 4 );
+    [ myus, sds, pval, bins_x, hx0, hx1 ] = make_punits_figures_one_hist( sst.tV, ispos, nbins, colors_NP, 'SD of peak time [ms]', byprob, make_legend );
+
+    subplot( 2, 3, 5 );
+    [ bst_myus, bst_sds, bst_pval, bins_x, hx0, hx1 ] = make_punits_figures_one_hist( sst.brst, ispos, nbins, colors_NP, 'Burst', byprob, make_legend );
+    alines( 0, 'x', 'color', [ 0 0 0 ], 'linestyle', '--' );
+    
+    subplot( 2, 3, 6 );
+    [ acm_myus, acm_sds, acm_pval, bins_x, hx0, hx1 ] = make_punits_figures_one_hist( sst.ach_com, ispos, nbins, colors_NP, 'ACH-COM [ms]', byprob, make_legend );
+    
+    for i               = 1 : 6
+        subplot( 2, 3, i )
+        axis square
+    end
+    
+    %------------------------------------------------------------------
+    % (2) scatter of t2p and width - PYR, INT, punits (scatter with jitter)
+    cti                     = sst.shankclu( :, 3 );
+    t2p                     = sst.tp;
+    wid                     = 1 ./ sst.fmax * 1000;
+    fwh                     = sst.geo_fwhm;
+    amp                     = sst.maxp2p * 1000;
+    acm                     = sst.ach_com;
+
+    gsd                     = sst.geo_sd;
+    asy                     = sst.asy;
+    bst                     = sst.brst;
+    bpi                     = sst.bpi;
+    tv                      = sst.tV;
+    x                       = [ t2p fwh amp acm wid gsd asy bst bpi tv ];
+    
+    % prepare the separatrix
+    [ ~, ~, fsep ]          = classify_waveform( [ t2p( cti ~= 2 ) wid( cti ~= 2 ) ] );
+%     xx                  = [ 0.1 0.9 ];
+%     yy                  = [ 0.6 1.4 ];
+    xx                      = [ 0.025 0.95 ];
+    yy                      = [ 0.35 1.4 ];
+%     xx                  = [ 0.03 1.13 ];
+%     yy                  = [ 0.25 1.55 ];
+    MSs                     = [ 8 8 12 ];
+    jitflag                 = 1;
+    
+    fig8( 3 )                   = figure;
+    fig8( 4 )                   = figure;
+    for spi = 1 : 4
+        switch spi
+            case 1
+                yval            = wid;
+                param2_ylabel   = 'Width [ms]';
+                param2_ylim     = yy;
+            case 2
+                yval            = fwh;
+                param2_ylabel   = 'FWHM [sites]';
+                param2_ylim     = [ 0.2 9.8 ];
+            case 3
+                yval            = amp;
+                param2_ylabel   = 'AMP [\muV]';
+                param2_ylim     = [ 20 1200 ];
+            case 4
+                yval            = acm;
+                param2_ylabel   = 'ACH COM [ms]';
+                param2_ylim     = [ 5 40 ];
+        end
+        
+        % jitter points to improve visualization
+        if jitflag
+            nclu                    = length( t2p );
+            dd                      = sort( diff( sort( t2p ) ) );
+            dd                      = dd( dd > 0 );
+            tt                      = sort( diff( sort( yval ) ) );
+            tt                      = tt( tt > 0 );
+            if isempty( dd )
+                jx                  = 0;
+            else
+                dd                  = dd( ceil(  length( dd ) * 0.05 ) );
+                jx                  = dd / 2 * randn( nclu, 1 );
+            end
+            if isempty( tt )
+                jy                  = 0;
+            else
+                tt                  = tt( ceil(  length( tt ) * 0.05 ) );
+                jy                  = tt * randn( nclu, 1 );
+            end
+        else
+            jx                      = 0;
+            jy                      = 0;
+        end
+        
+        if spi == 1
+            figure( fig8( 3 ) )
+            fh                          = fimplicit( fsep, [ xx yy ] );
+            set( fh, 'color', [ 0 0 0 ] );
+        else
+            figure( fig8( 4 ) )
+            subplot( 2, 2, spi - 1 )
+        end
+        
+        hold on
+        for ct                      = 0 : 2
+            cidx                    = cti == ct;
+            ph                      = plot( t2p( cidx ) + jx( cidx ), yval( cidx ) + jy( cidx ), '.' );
+            switch ct
+                case 0
+                    set( ph, 'color', colors_PI( 1, : ), 'MarkerSize', MSs( 1 ) )
+                case 1
+                    set( ph, 'color', colors_PI( 2, : ), 'MarkerSize', MSs( 2 ) )
+                case 2
+                    set( ph, 'color', colors_NP_light( 2, : ), 'MarkerSize', MSs( 3 ) )
+            end
+        end
+        axis square
+        xlim( xx )
+        ylim( param2_ylim )
+        set( gca, 'tickdir', 'out', 'box', 'off' );
+        axis square
+        xlabel( 'T2P [ms]' )
+        ylabel( param2_ylabel )
+    end
+
+    % (2.1) scatter of other pairs of features
+    
+    %------------------------------------------------------------------
+    % (3) cluster punits
+    
+    clustMode               = 'sic';
+    feature_names           = { 'T2P', 'FWHM', 'AMP', 'ACM_COM', 'WID', 'GSD', 'ASY', 'BURST', 'BPI', 'SD_tV' };
+    
+    % cluster all punits
+    didx                    = ( 1 : 4 );
+    xhat                    = x( ispos, didx );
+    fprintf( 'Running optclust for %d samples, %d features...', size( xhat, 1 ), size( xhat, 2 ) )
+    clu                     = optclust( xhat, clustMode );
+    nclu                    = length( unique( clu ) );
+    fprintf( 'found %d clusters!\n', nclu )
+    % after dataset is finalized, should
+    % (1) run clustering many (e.g. 10) times to determine number nclu, then
+    % (2) run clustering with a fixed nclu many times to determine tagging, then
+    % (3) average tagging of each individual element
+    % (4) save this to file and use the fixed clustering results
+    
+    % to generate a fixed clustering solution and save it, use:
+    %save( 'punits_clusters_26jun20', 'x', 'feature_names', 'xhat', 'clu' )
+    
+    % to load a clustering solution, use:
+    %L                       = load( [ datadir 'punits_clusters_26jun20.mat' ] );
+    
+    % to work on the local version (may differ from run to run), use:
+    L.x = x; L.feature_names = feature_names; L.xhat = xhat; L.clu = clu;
+    
+    clear x feature_names xhat clu
+    nclu                    = length( unique( L.clu ) );
+    
+    % assume nclu of three clusters, and assign colors and names
+    clunames                = cell( size( L.clu ) ); 
+    uclunames               = { 'SPU (INT)', 'LPU (axons/dendrites)', 'JUX (PYR)' };
+    if nclu>3
+        for i               =  1 : nclu
+        uclunames{i} = sprintf('%d', i);
+        end
+    end
+    for i                   = 1 : nclu
+        clunames( L.clu == i )  = uclunames( i );
+    end
+    colors                  = [ colors_PI( 1, : ); colors_NP( 2, : ); colors_PI( 2, : ) ; [1 0 0]; [0 0 1]; [0 0 0]];
+   
+    % scatter of t2p and FWHM - punits only, data-dependent clustering (in high-dimensional space)
+    
+    %sstN                    = struct_select( sst, ~ispos );
+    %labels                  = sstN.pyr;
+    %param1                  = sstN.tp;
+    param1                  = t2p( ~ispos );
+    labels                  = sst.pyr( ~ispos );
+
+    SFs                     = [ 1/10 1 1/50 ];
+    MS_Punits               = 10;
+    
+    fig8( 5 )               = figure;
+    %colors                      = 'rgbmkcyrgbmkcy';
+    for spi = 1 : 3
+        subplot( 2, 2, spi )
+        switch spi
+            case 1
+                param2                  = fwh( ~ispos );
+                param2_label            = 'FWHM [sites]';
+            case 2
+                param2                  = amp( ~ispos );
+                param2_label            = 'AMP [\muV]';
+            case 3
+                param2                  = acm( ~ispos );
+                param2_label            = 'ACH COM [ms]';
+        end
+        
+        hold on,
+        for i                   = 1 : nclu
+            ph                  = plot( L.xhat( L.clu == i, 1 ), L.xhat( L.clu == i, spi + 1 ) * SFs( spi ), '.' );
+            set( ph, 'color', colors( i, : ), 'markersize', MS_Punits )
+        end
+        title( sprintf( 'Pos dataset (%d clusters)', nclu ) )
+        xlabel( 'T2P [ms]' )
+        ylabel( param2_label )
+        axis square
+        make_punits_figures_add_iso_ellipses( param1, param2 * SFs( spi ), labels, colors_PI_light );            % add ellipses
+        % scale back the ticks of the y-axis
+        lbls                    = get( gca, 'YTickLabel' );
+        yticks                  = zeros( 1, length( lbls ) );
+        for i                   = 1 : length( lbls )
+            yticks( i )         = str2double( lbls{ i } ) / SFs( spi );
+        end
+        ytick                   = get( gca, 'ytick' );
+        set( gca, 'ytick', ytick )
+        set( gca, 'YTickLabel', yticks );
+        set( gca, 'tickdir', 'out', 'box', 'off' );
+    end
+    
+    % (3.1) tSNE projection of the high-D data
+    Y                       = tsne( L.x( ispos, didx ), 'Algorithm', 'exact', 'Standardize', true, 'Perplexity', 20 ); 
+    subplot( 2, 2, 4 )
+    gh                      = gscatter( Y( :, 1 ), Y( :, 2 ), clunames );
+    for i                   = 1 : nclu
+        acolor              = colors( ismember( uclunames, get( gh( i ), 'DisplayName' ) ), : );
+        set( gh( i ), 'color', acolor, 'markersize', MS_Punits );
+    end
+    axis off
+%     axis square
+%     set( gca, 'tickdir', 'out', 'box', 'off' );
+    
+    fig8( 6 ) = figure;
+    for i                   = 1: nclu
+        sums (i)            = sum (ismember(L.clu, i));   
+    end
+    ph                      = pie( sums, uclunames );   
+    for i                   = 1 : nclu
+%         set( ph( 2 * i - 1 ), 'FaceColor', colors(i), 'EdgeColor', colors( i ) )
+        set( ph( 2 * i ), 'String', sprintf( '%s (%d)', uclunames{ i }, sums( i ) ) )
+    end
+
+    % demonstrate all features
+    % including the calc_spatial_waveform_features for a couple of
+    % interesting units (nunits/punits/bunits)
+    
+
+    %-----
+    % save the figures
+    fig = fig8;
+    if savef
+        for i = 1 : length( fig )
+            if fig( i ) == 0 || isempty( fig( i ) )
+                continue
+            end
+            figname = sprintf( '%s/punits_FIG8_part%d', outdir, i );
+            fig_out( fig( i ), 1, figname, savetype ),
+        end
+    end
+    
+    
+end
+
+% ----------------------------------------------------------------------
+% Figure 9
+% 
+% ----------------------------------------------------------------------
+
+if fignums( 9 )
+    
+    % process the data
+    
+    % plot the figures
+    fig9( 1 ) = figure;
+    
+    fig9( 2 ) = figure;
+
+    %-----
+    % save the figures
+    fig = fig9;
+    if savef
+        for i = 1 : length( fig )
+            if fig( i ) == 0 || isempty( fig( i ) )
+                continue
+            end
+            figname = sprintf( '%s/punits_FIG9_part%d', outdir, i );
+            fig_out( fig( i ), 1, figname, savetype ),
+        end
+    end
+    
+    
+end
+
+return
+
+
+%----------------------------------------------------
+% internal functions
+%----------------------------------------------------
+
+
+
+%----------------------------------------------------
+
+% EOF
